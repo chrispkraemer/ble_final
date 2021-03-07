@@ -90,7 +90,7 @@ static ble_uuid_t const m_nus_uuid =
     .type = NUS_SERVICE_UUID_TYPE
 };
 
-struct bst *root = NULL;
+struct node *root;
 
 
 /**@brief Function for handling asserts in the SoftDevice.
@@ -236,11 +236,50 @@ static void ble_nus_chars_received_uart_print(uint8_t * p_data, uint16_t data_le
                 printf("app_uart_put failed for index 0x%04lx.\r\n", i);
                 APP_ERROR_CHECK(ret_val);
             }
+            
         } while (ret_val == NRF_ERROR_BUSY);
     }
+    
     if (p_data[data_len-1] == '\r')
     {
         while (app_uart_put('\n') == NRF_ERROR_BUSY);
+    }
+    int j;
+    char command;
+    char number[25];
+    int conv_number;
+    if(p_data[0] == ':'){
+        //printf("command found\r\n");
+        command=p_data[1];
+        switch (command)
+        {
+        case 'i':
+            for(j = 0; j < data_len-2; j++){
+                number[j] = p_data[j+2];
+            }
+            number[j] = '\0';
+            conv_number = atoi(number);
+            //printf("this is the number %d\r\n",conv_number);
+            root = insert(root, conv_number);
+            break;
+        case 'd':
+            for(j = 0; j < data_len-2; j++){
+                number[j] = p_data[j+2];
+            }
+            number[j] = '\0';
+            conv_number = atoi(number);
+            //printf("this is the number %d\r\n",conv_number);
+            root = delete(root, conv_number);
+            break;
+        case 'p':
+            inorder(root);
+            printf("\r\n");
+            break;
+        case 's':
+            break;
+        default:
+            break;
+        }
     }
     if (ECHOBACK_BLE_UART_DATA)
     {
@@ -278,6 +317,8 @@ void uart_event_handle(app_uart_evt_t * p_event)
             UNUSED_VARIABLE(app_uart_get(&data_array[index]));
             index++;
 
+        
+
             if ((data_array[index - 1] == '\n') || (data_array[index - 1] == '\r') || (index >= (m_ble_nus_max_data_len)))
             {
                 //NRF_LOG_DEBUG("Ready to send data over BLE NUS");
@@ -301,7 +342,7 @@ void uart_event_handle(app_uart_evt_t * p_event)
                     }
                     printf("\r\n");
                     if(data_array[0] == ':'){
-                        printf("command found\r\n");
+                        //printf("command found\r\n");
                         command=data_array[1];
                         switch (command)
                         {
@@ -322,10 +363,11 @@ void uart_event_handle(app_uart_evt_t * p_event)
                             number[j] = '\0';
                             conv_number = atoi(number);
                             //printf("this is the number %d\r\n",conv_number);
-                            root = del(root, conv_number);
+                            root = delete(root, conv_number);
                             break;
                         case 'p':
                             inorder(root);
+                            printf("\r\n");
                             break;
                         case 's':
                             break;
@@ -727,7 +769,28 @@ int main(void)
     nus_c_init();
     scan_init();
 
-    
+    /*
+
+    root = insert(root,5);
+    root = insert(root,3);
+    root = insert(root,45);
+    inorder(root);
+    printf("\r\n");
+    root = delete(root,45);
+    inorder(root);
+    printf("\r\n");
+    root = delete(root,3);
+    inorder(root);
+    printf("\r\n");
+    root = delete(root,5);
+    inorder(root);
+    printf("\r\n");
+    root = insert(root,3);
+    root = insert(root,45);
+    inorder(root);
+    printf("\r\n");
+
+    */
 
     
 

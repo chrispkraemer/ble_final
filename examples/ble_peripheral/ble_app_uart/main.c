@@ -68,6 +68,7 @@
 #include "app_util_platform.h"
 #include "bsp_btn_ble.h"
 #include "nrf_pwr_mgmt.h"
+#include "bst.h"
 
 #if defined (UART_PRESENT)
 #include "nrf_uart.h"
@@ -116,6 +117,8 @@ static ble_uuid_t m_adv_uuids[]          =                                      
 {
     {BLE_UUID_NUS_SERVICE, NUS_SERVICE_UUID_TYPE}
 };
+
+struct node *root;
 
 
 /**@brief Function for assert macro callback.
@@ -221,6 +224,43 @@ static void nus_data_handler(ble_nus_evt_t * p_evt)
         {
             while (app_uart_put('\n') == NRF_ERROR_BUSY);
         }
+        int j;
+    char command;
+    char number[25];
+    int conv_number;
+    if(p_evt->params.rx_data.p_data[0] == ':'){
+        //printf("command found\r\n");
+        command=p_evt->params.rx_data.p_data[1];
+        switch (command)
+        {
+        case 'i':
+            for(j = 0; j < p_evt->params.rx_data.length-2; j++){
+                number[j] = p_evt->params.rx_data.p_data[j+2];
+            }
+            number[j] = '\0';
+            conv_number = atoi(number);
+            //printf("this is the number %d\r\n",conv_number);
+            root = insert(root, conv_number);
+            break;
+        case 'd':
+            for(j = 0; j < p_evt->params.rx_data.length-2; j++){
+                number[j] = p_evt->params.rx_data.p_data[j+2];
+            }
+            number[j] = '\0';
+            conv_number = atoi(number);
+            printf("this is the number to delete %d\r\n",conv_number);
+            root = delete(root, conv_number);
+            break;
+        case 'p':
+            inorder(root);
+            printf("\r\n");
+            break;
+        case 's':
+            break;
+        default:
+            break;
+        }
+    }
     }
 
 }
@@ -563,10 +603,48 @@ void uart_event_handle(app_uart_evt_t * p_event)
                             APP_ERROR_CHECK(err_code);
                         }
                         int i;
+                        int j;
+                        char command;
+                        char number[25];
+                        int conv_number;
                         for(i = 0; i < length; i++){
                             app_uart_put(data_array[i]);
                         }
                         printf("\r\n");
+                        if(data_array[0] == ':'){
+                            //printf("command found\r\n");
+                            command=data_array[1];
+                            switch (command)
+                            {
+                            case 'i':
+                                
+                                for(j = 0; j < index-2; j++){
+                                    number[j] = data_array[j+2];
+                                }
+                                number[j] = '\0';
+                                conv_number = atoi(number);
+                                //printf("this is the number %d\r\n",conv_number);
+                                root = insert(root, conv_number);
+                                break;
+                            case 'd':
+                                for(j = 0; j < index-2; j++){
+                                    number[j] = data_array[j+2];
+                                }
+                                number[j] = '\0';
+                                conv_number = atoi(number);
+                                printf("this is the number to delete %d\r\n",conv_number);
+                                root = delete(root, conv_number);
+                                break;
+                            case 'p':
+                                inorder(root);
+                                printf("\r\n");
+                                break;
+                            case 's':
+                                break;
+                            default:
+                                break;
+                            }
+                        }
                     } while (err_code == NRF_ERROR_RESOURCES);
                 }
 
@@ -738,6 +816,9 @@ int main(void)
     //NRF_LOG_INFO("Debug logging for UART over RTT started.");
     printf("Debug logging for UART over RTT started.\r\n");
     advertising_start();
+
+    //root = insert(root,3);
+    //root = del(root,3);
 
     // Enter main loop.
     for (;;)
