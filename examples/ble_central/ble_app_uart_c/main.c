@@ -59,10 +59,13 @@
 #include "nrf_ble_scan.h"
 
 #include "bst.h"
+#include "app_simple_timer.h"
+#include "nrf_drv_timer.h"
 
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 #include "nrf_log_default_backends.h"
+#include "nrf_delay.h"
 
 
 #define APP_BLE_CONN_CFG_TAG    1                                       /**< Tag that refers to the BLE stack configuration set with @ref sd_ble_cfg_set. The default tag is @ref BLE_CONN_CFG_TAG_DEFAULT. */
@@ -75,6 +78,7 @@
 
 #define ECHOBACK_BLE_UART_DATA  0                                       /**< Echo the UART data that is received over the Nordic UART Service (NUS) back to the sender. */
 
+#define TIMEOUT_VALUE           5000000 //5 seconds
 
 BLE_NUS_C_DEF(m_ble_nus_c);                                             /**< BLE Nordic UART Service (NUS) client instance. */
 NRF_BLE_GATT_DEF(m_gatt);                                               /**< GATT module instance. */
@@ -91,6 +95,10 @@ static ble_uuid_t const m_nus_uuid =
 };
 
 struct node *root;
+
+int primary = 0;
+
+//const nrf_drv_timer_t TIMER_LED = NRF_DRV_TIMER_INSTANCE(0);
 
 
 /**@brief Function for handling asserts in the SoftDevice.
@@ -254,28 +262,37 @@ static void ble_nus_chars_received_uart_print(uint8_t * p_data, uint16_t data_le
         switch (command)
         {
         case 'i':
-            for(j = 0; j < data_len-2; j++){
-                number[j] = p_data[j+2];
+            if(!primary){
+                for(j = 0; j < data_len-2; j++){
+                    number[j] = p_data[j+2];
+                }
+                number[j] = '\0';
+                conv_number = atoi(number);
+                //printf("this is the number %d\r\n",conv_number);
+                root = insert(root, conv_number);
             }
-            number[j] = '\0';
-            conv_number = atoi(number);
-            //printf("this is the number %d\r\n",conv_number);
-            root = insert(root, conv_number);
             break;
         case 'd':
-            for(j = 0; j < data_len-2; j++){
-                number[j] = p_data[j+2];
+            if(!primary){
+                for(j = 0; j < data_len-2; j++){
+                    number[j] = p_data[j+2];
+                }
+                number[j] = '\0';
+                conv_number = atoi(number);
+                //printf("this is the number %d\r\n",conv_number);
+                root = delete(root, conv_number);
             }
-            number[j] = '\0';
-            conv_number = atoi(number);
-            //printf("this is the number %d\r\n",conv_number);
-            root = delete(root, conv_number);
             break;
         case 'p':
             inorder(root);
             printf("\r\n");
             break;
-        case 's':
+        case 'c':
+            if(!primary){
+                printf("clearing tree\r\n");
+                deallocate(root);
+            }
+            root = NULL;
             break;
         default:
             break;
@@ -337,6 +354,7 @@ void uart_event_handle(app_uart_evt_t * p_event)
                     char command;
                     char number[25];
                     int conv_number;
+                    //ret_code_t            err_code;
                     for(i = 0; i < index; i++){
                         app_uart_put(data_array[i]);
                     }
@@ -347,29 +365,50 @@ void uart_event_handle(app_uart_evt_t * p_event)
                         switch (command)
                         {
                         case 'i':
+                            if(primary){
+                                for(j = 0; j < index-2; j++){
+                                    number[j] = data_array[j+2];
+                                }
+                                number[j] = '\0';
+                                conv_number = atoi(number);
+                                printf("this is the number %d\r\n",conv_number);
+                                root = insert(root, conv_number);
+                                //nrf_delay_ms(10);
+                                ret_val = sd_ble_gap_disconnect(m_ble_nus_c.conn_handle,
+                                             BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+                                //APP_ERROR_CHECK(ret_val);
                             
-                            for(j = 0; j < index-2; j++){
-                                number[j] = data_array[j+2];
+                                //m_ble_nus_c.conn_handle = BLE_CONN_HANDLE_INVALID;
+                                //scan_start();
                             }
-                            number[j] = '\0';
-                            conv_number = atoi(number);
-                            //printf("this is the number %d\r\n",conv_number);
-                            root = insert(root, conv_number);
                             break;
                         case 'd':
-                            for(j = 0; j < index-2; j++){
-                                number[j] = data_array[j+2];
+                            if(primary){
+                                for(j = 0; j < index-2; j++){
+                                    number[j] = data_array[j+2];
+                                }
+                                number[j] = '\0';
+                                conv_number = atoi(number);
+                                //printf("this is the number %d\r\n",conv_number);
+                                root = delete(root, conv_number);
+                                //nrf_delay_ms(10);
+                                ret_val = sd_ble_gap_disconnect(m_ble_nus_c.conn_handle,
+                                             BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+                                //APP_ERROR_CHECK(ret_val);
+                                
+                                //scan_start();
                             }
-                            number[j] = '\0';
-                            conv_number = atoi(number);
-                            //printf("this is the number %d\r\n",conv_number);
-                            root = delete(root, conv_number);
                             break;
                         case 'p':
                             inorder(root);
                             printf("\r\n");
                             break;
-                        case 's':
+                        case 'c':
+                            if(primary){
+                                printf("clearing tree\r\n");
+                                deallocate(root);
+                            }
+                            root = NULL;
                             break;
                         default:
                             break;
@@ -425,6 +464,17 @@ static void ble_nus_c_evt_handler(ble_nus_c_t * p_ble_nus_c, ble_nus_c_evt_t con
             APP_ERROR_CHECK(err_code);
             //NRF_LOG_INFO("Connected to device with Nordic UART Service.");
             printf("Connected to device with Nordic UART Service.\r\n");
+            static uint8_t data_array[BLE_NUS_MAX_DATA_LEN];
+            data_array[0] = ':';
+            data_array[1] = 'l';
+            data_array[2] = '\0';
+            static uint16_t index = 3;
+            uint32_t ret_val;
+            ret_val = ble_nus_c_string_send(&m_ble_nus_c, data_array, index);
+                    if ( (ret_val != NRF_ERROR_INVALID_STATE) && (ret_val != NRF_ERROR_RESOURCES) )
+                    {
+                        APP_ERROR_CHECK(ret_val);
+                    }
             break;
 
         case BLE_NUS_C_EVT_NUS_TX_EVT:
@@ -433,7 +483,8 @@ static void ble_nus_c_evt_handler(ble_nus_c_t * p_ble_nus_c, ble_nus_c_evt_t con
 
         case BLE_NUS_C_EVT_DISCONNECTED:
             //NRF_LOG_INFO("Disconnected.");
-            printf("Disconnected\r\n");
+            printf("Disconnected hehe\r\n");
+            nrf_delay_ms(5000);
             scan_start();
             break;
     }
@@ -768,6 +819,7 @@ int main(void)
     gatt_init();
     nus_c_init();
     scan_init();
+    
 
     /*
 
@@ -803,5 +855,6 @@ int main(void)
     for (;;)
     {
         idle_state_handle();
+        
     }
 }

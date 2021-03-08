@@ -69,6 +69,7 @@
 #include "bsp_btn_ble.h"
 #include "nrf_pwr_mgmt.h"
 #include "bst.h"
+#include "nrf_delay.h"
 
 #if defined (UART_PRESENT)
 #include "nrf_uart.h"
@@ -119,6 +120,11 @@ static ble_uuid_t m_adv_uuids[]          =                                      
 };
 
 struct node *root;
+
+int primary = 1;
+
+uint8_t lastcommand[25];
+uint8_t cmdlen = 0;
 
 
 /**@brief Function for assert macro callback.
@@ -225,42 +231,65 @@ static void nus_data_handler(ble_nus_evt_t * p_evt)
             while (app_uart_put('\n') == NRF_ERROR_BUSY);
         }
         int j;
-    char command;
-    char number[25];
-    int conv_number;
-    if(p_evt->params.rx_data.p_data[0] == ':'){
-        //printf("command found\r\n");
-        command=p_evt->params.rx_data.p_data[1];
-        switch (command)
-        {
-        case 'i':
-            for(j = 0; j < p_evt->params.rx_data.length-2; j++){
-                number[j] = p_evt->params.rx_data.p_data[j+2];
+        char command;
+        char number[25];
+        int conv_number;
+        if(p_evt->params.rx_data.p_data[0] == ':'){
+            //printf("command found\r\n");
+            command=p_evt->params.rx_data.p_data[1];
+            switch (command)
+            {
+            case 'i':
+                if(!primary){
+                    for(j = 0; j < p_evt->params.rx_data.length-2; j++){
+                        number[j] = p_evt->params.rx_data.p_data[j+2];
+                    }
+                    number[j] = '\0';
+                    conv_number = atoi(number);
+                    //printf("this is the number %d\r\n",conv_number);
+                    root = insert(root, conv_number);
+                }
+                break;
+            case 'd':
+                if(!primary){
+                    for(j = 0; j < p_evt->params.rx_data.length-2; j++){
+                        number[j] = p_evt->params.rx_data.p_data[j+2];
+                    }
+                    number[j] = '\0';
+                    conv_number = atoi(number);
+                    printf("this is the number to delete %d\r\n",conv_number);
+                    root = delete(root, conv_number);
+                }
+                break;
+            case 'p':
+                inorder(root);
+                printf("\r\n");
+                break;
+            case 'c':
+                if(!primary){
+                    printf("clearing tree\r\n");
+                    deallocate(root);
+                }
+                root = NULL;
+                break;
+            case 'l':
+    
+                if(primary && cmdlen > 0){
+                            uint16_t length = (uint16_t)cmdlen;
+                            printf("lastcommand: %s, cmdlen: %d\r\n", lastcommand,cmdlen);
+                            err_code = ble_nus_data_send(&m_nus, lastcommand, &length, m_conn_handle);
+                                    if ((err_code != NRF_ERROR_INVALID_STATE) &&
+                                        (err_code != NRF_ERROR_RESOURCES) &&
+                                        (err_code != NRF_ERROR_NOT_FOUND))
+                                    {
+                                        //APP_ERROR_CHECK(err_code);
+                                    }
+                            cmdlen = 0;
+                }
+            default:
+                break;
             }
-            number[j] = '\0';
-            conv_number = atoi(number);
-            //printf("this is the number %d\r\n",conv_number);
-            root = insert(root, conv_number);
-            break;
-        case 'd':
-            for(j = 0; j < p_evt->params.rx_data.length-2; j++){
-                number[j] = p_evt->params.rx_data.p_data[j+2];
-            }
-            number[j] = '\0';
-            conv_number = atoi(number);
-            printf("this is the number to delete %d\r\n",conv_number);
-            root = delete(root, conv_number);
-            break;
-        case 'p':
-            inorder(root);
-            printf("\r\n");
-            break;
-        case 's':
-            break;
-        default:
-            break;
         }
-    }
     }
 
 }
@@ -351,6 +380,7 @@ static void conn_params_init(void)
  *
  * @note This function will not return.
  */
+/*
 static void sleep_mode_enter(void)
 {
     uint32_t err_code = bsp_indication_set(BSP_INDICATE_IDLE);
@@ -365,7 +395,7 @@ static void sleep_mode_enter(void)
     APP_ERROR_CHECK(err_code);
 }
 
-
+*/
 /**@brief Function for handling advertising events.
  *
  * @details This function will be called for advertising events which are passed to the application.
@@ -383,7 +413,7 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
             APP_ERROR_CHECK(err_code);
             break;
         case BLE_ADV_EVT_IDLE:
-            sleep_mode_enter();
+            //sleep_mode_enter();
             break;
         default:
             break;
@@ -399,6 +429,7 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
 static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
 {
     uint32_t err_code;
+    
 
     switch (p_ble_evt->header.evt_id)
     {
@@ -410,13 +441,19 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
             m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
             err_code = nrf_ble_qwr_conn_handle_assign(&m_qwr, m_conn_handle);
             APP_ERROR_CHECK(err_code);
+            
+            
+            
             break;
 
         case BLE_GAP_EVT_DISCONNECTED:
             //NRF_LOG_INFO("Disconnected");
-            printf("Disconnected\r\n");
+            
+            
             // LED indication will be changed when advertising starts.
             m_conn_handle = BLE_CONN_HANDLE_INVALID;
+            printf("Disconnected!\r\n");
+            //nrf_delay_ms(10000);
             break;
 
         case BLE_GAP_EVT_PHY_UPDATE_REQUEST:
@@ -508,6 +545,8 @@ void gatt_evt_handler(nrf_ble_gatt_t * p_gatt, nrf_ble_gatt_evt_t const * p_evt)
     printf("ATT MTU exchange completed. central 0x%x peripheral 0x%x\r\n",
                   p_gatt->att_mtu_desired_central,
                   p_gatt->att_mtu_desired_periph);
+
+    
 }
 
 
@@ -534,7 +573,7 @@ void bsp_event_handler(bsp_event_t event)
     switch (event)
     {
         case BSP_EVENT_SLEEP:
-            sleep_mode_enter();
+            //sleep_mode_enter();
             break;
 
         case BSP_EVENT_DISCONNECT:
@@ -546,8 +585,10 @@ void bsp_event_handler(bsp_event_t event)
             break;
 
         case BSP_EVENT_WHITELIST_OFF:
+            printf("wtf is happeneing\r\n");
             if (m_conn_handle == BLE_CONN_HANDLE_INVALID)
             {
+                printf("restarting advertising\r\n");
                 err_code = ble_advertising_restart_without_whitelist(&m_advertising);
                 if (err_code != NRF_ERROR_INVALID_STATE)
                 {
@@ -614,32 +655,59 @@ void uart_event_handle(app_uart_evt_t * p_event)
                         if(data_array[0] == ':'){
                             //printf("command found\r\n");
                             command=data_array[1];
+                            lastcommand[0] = ':';
+                            lastcommand[1] = command;
                             switch (command)
                             {
                             case 'i':
-                                
-                                for(j = 0; j < index-2; j++){
-                                    number[j] = data_array[j+2];
+                                if(primary){
+                                    
+                                    for(j = 0; j < index-2; j++){
+                                        number[j] = data_array[j+2];
+                                        lastcommand[j+2] = data_array[j+2];
+                                    }
+                                    number[j] = '\0';
+                                    lastcommand[j+2] = '\0';
+                                    cmdlen = index;
+                                    //printf("last command: %s\r\n",lastcommand);
+                                    conv_number = atoi(number);
+                                    //printf("this is the number %d\r\n",conv_number);
+                                    root = insert(root, conv_number);
+                                    sd_ble_gap_disconnect(m_conn_handle,
+                                             BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+                                    //m_conn_handle = BLE_CONN_HANDLE_INVALID;
                                 }
-                                number[j] = '\0';
-                                conv_number = atoi(number);
-                                //printf("this is the number %d\r\n",conv_number);
-                                root = insert(root, conv_number);
                                 break;
                             case 'd':
-                                for(j = 0; j < index-2; j++){
-                                    number[j] = data_array[j+2];
+                                if(primary){
+                                    for(j = 0; j < index-2; j++){
+                                        number[j] = data_array[j+2];
+                                        lastcommand[j+2] = data_array[j+2];
+                                    }
+                                    number[j] = '\0';
+                                    lastcommand[j+2] = '\0';
+                                    cmdlen = index;
+                                    conv_number = atoi(number);
+                                    printf("this is the number to delete %d\r\n",conv_number);
+                                    root = delete(root, conv_number);
+                                    sd_ble_gap_disconnect(m_conn_handle,
+                                             BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
                                 }
-                                number[j] = '\0';
-                                conv_number = atoi(number);
-                                printf("this is the number to delete %d\r\n",conv_number);
-                                root = delete(root, conv_number);
                                 break;
                             case 'p':
                                 inorder(root);
                                 printf("\r\n");
                                 break;
-                            case 's':
+                            case 'c':
+                                if(primary){
+                                    printf("clearing tree\r\n");
+                                    deallocate(root);
+                                    lastcommand[2] = '\0';
+                                    cmdlen = index;
+                                    sd_ble_gap_disconnect(m_conn_handle,
+                                             BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+                                }
+                                root = NULL;
                                 break;
                             default:
                                 break;

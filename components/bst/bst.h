@@ -11,4 +11,6 @@ struct node* insert(struct node *root, int x);
 
 struct node* delete(struct node *root, int x);
 
+void deallocate(struct node *root);
+
 void inorder(struct node *root);

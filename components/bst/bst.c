@@ -104,3 +104,14 @@ void inorder(struct node *root)
         inorder(root->right_child);// visiting right child
     }
 }
+
+void deallocate(struct node *root){
+    if(root == NULL){
+        return;
+    }
+    deallocate(root->left_child);
+    deallocate(root->right_child);
+
+    free(root);
+    return;
+}
