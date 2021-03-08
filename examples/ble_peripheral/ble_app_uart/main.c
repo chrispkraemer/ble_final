@@ -119,6 +119,14 @@ static ble_uuid_t m_adv_uuids[]          =                                      
     {BLE_UUID_NUS_SERVICE, NUS_SERVICE_UUID_TYPE}
 };
 
+
+struct node
+{
+    int data; //node will store an integer
+    struct node *right_child; // right child
+    struct node *left_child; // left child
+};
+
 struct node *root;
 
 int primary = 1;
@@ -193,6 +201,93 @@ static void nrf_qwr_error_handler(uint32_t nrf_error)
     APP_ERROR_HANDLER(nrf_error);
 }
 
+// inline function to swap two numbers
+inline void swap(char *x, char *y) {
+    char t = *x; *x = *y; *y = t;
+}
+ 
+// function to reverse buffer[i..j]
+char* reverse(char *buffer, int i, int j)
+{
+    while (i < j)
+        swap(&buffer[i++], &buffer[j--]);
+ 
+    return buffer;
+}
+ 
+// Iterative function to implement itoa() function in C
+char* itoa(int value, char* buffer, int base)
+{
+    // invalid input
+    if (base < 2 || base > 32)
+        return buffer;
+ 
+    // consider absolute value of number
+    int n = abs(value);
+ 
+    int i = 0;
+    while (n)
+    {
+        int r = n % base;
+ 
+        if (r >= 10) 
+            buffer[i++] = 65 + (r - 10);
+        else
+            buffer[i++] = 48 + r;
+ 
+        n = n / base;
+    }
+ 
+    // if number is 0
+    if (i == 0)
+        buffer[i++] = '0';
+ 
+    // If base is 10 and value is negative, the resulting string 
+    // is preceded with a minus sign (-)
+    // With any other base, value is always considered unsigned
+    if (value < 0 && base == 10)
+        buffer[i++] = '-';
+ 
+    buffer[i] = '\0'; // null terminate string
+ 
+    // reverse the string and return it
+    return reverse(buffer, 0, i - 1);
+}
+
+void bstdump(struct node *input)
+{
+    if(input!=NULL) // checking if the root is not null
+    {
+        bstdump(input->left_child); // visiting left child
+        uint8_t data_array[BLE_NUS_MAX_DATA_LEN];
+        uint16_t index = 0;
+        uint32_t ret_val;
+        //data_array[0] = ':';
+        //data_array[1] = 'r';
+        char cmd[BLE_NUS_MAX_DATA_LEN];
+        char cmd2[BLE_NUS_MAX_DATA_LEN-2];
+        cmd[0] = ':';
+        cmd[1] = 'i';
+        //printf("itoa = %s\r\n",itoa(input->data,cmd2,10));
+        strcpy(&cmd[2],itoa(input->data,cmd2,10));
+        printf(" %s \r\n",cmd);
+        index = (uint16_t)strlen(cmd);
+        int i;
+        for(i = 0; i < index; i++){
+            data_array[i] = (uint8_t)cmd[i];
+        }
+        
+        ret_val = ble_nus_data_send(&m_nus, data_array, &index, m_conn_handle);
+                                    if ((ret_val != NRF_ERROR_INVALID_STATE) &&
+                                        (ret_val != NRF_ERROR_RESOURCES) &&
+                                        (ret_val != NRF_ERROR_NOT_FOUND))
+                                    {
+                                        //APP_ERROR_CHECK(err_code);
+                                    }
+        bstdump(input->right_child);// visiting right child
+    }
+}
+
 
 /**@brief Function for handling the data from the Nordic UART Service.
  *
@@ -247,6 +342,7 @@ static void nus_data_handler(ble_nus_evt_t * p_evt)
                     number[j] = '\0';
                     conv_number = atoi(number);
                     //printf("this is the number %d\r\n",conv_number);
+                    printf("i backup insert %d\r\n",conv_number);
                     root = insert(root, conv_number);
                 }
                 break;
@@ -285,6 +381,22 @@ static void nus_data_handler(ble_nus_evt_t * p_evt)
                                         //APP_ERROR_CHECK(err_code);
                                     }
                             cmdlen = 0;
+                }
+                break;
+            case 'r':
+                if(primary){
+                    for(j = 0; j < p_evt->params.rx_data.length-2; j++){
+                        number[j] = p_evt->params.rx_data.p_data[j+2];
+                    }
+                    number[j] = '\0';
+                    conv_number = atoi(number);
+                    printf("r insert %d\r\n",conv_number);
+                    root = insert(root,conv_number);
+                }
+                break;
+            case 'n':
+                if(primary){
+                    bstdump(root);
                 }
             default:
                 break;
@@ -672,6 +784,7 @@ void uart_event_handle(app_uart_evt_t * p_event)
                                     //printf("last command: %s\r\n",lastcommand);
                                     conv_number = atoi(number);
                                     //printf("this is the number %d\r\n",conv_number);
+                                    printf("i primary insert %d\r\n",conv_number);
                                     root = insert(root, conv_number);
                                     sd_ble_gap_disconnect(m_conn_handle,
                                              BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
@@ -887,6 +1000,7 @@ int main(void)
 
     //root = insert(root,3);
     //root = del(root,3);
+    inorder(root);
 
     // Enter main loop.
     for (;;)

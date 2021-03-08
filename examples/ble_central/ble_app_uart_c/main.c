@@ -40,6 +40,8 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "stdlib.h"
+#include <string.h>
 #include "nordic_common.h"
 #include "app_error.h"
 #include "app_uart.h"
@@ -94,9 +96,17 @@ static ble_uuid_t const m_nus_uuid =
     .type = NUS_SERVICE_UUID_TYPE
 };
 
+struct node {
+    int data;
+    struct node* left_child;
+    struct node* right_child;
+};
+
 struct node *root;
 
+
 int primary = 0;
+int startup = 0;
 
 //const nrf_drv_timer_t TIMER_LED = NRF_DRV_TIMER_INSTANCE(0);
 
@@ -219,6 +229,92 @@ static void db_disc_handler(ble_db_discovery_evt_t * p_evt)
     ble_nus_c_on_db_disc_evt(&m_ble_nus_c, p_evt);
 }
 
+// inline function to swap two numbers
+inline void swap(char *x, char *y) {
+    char t = *x; *x = *y; *y = t;
+}
+ 
+// function to reverse buffer[i..j]
+char* reverse(char *buffer, int i, int j)
+{
+    while (i < j)
+        swap(&buffer[i++], &buffer[j--]);
+ 
+    return buffer;
+}
+ 
+// Iterative function to implement itoa() function in C
+char* itoa(int value, char* buffer, int base)
+{
+    // invalid input
+    if (base < 2 || base > 32)
+        return buffer;
+ 
+    // consider absolute value of number
+    int n = abs(value);
+ 
+    int i = 0;
+    while (n)
+    {
+        int r = n % base;
+ 
+        if (r >= 10) 
+            buffer[i++] = 65 + (r - 10);
+        else
+            buffer[i++] = 48 + r;
+ 
+        n = n / base;
+    }
+ 
+    // if number is 0
+    if (i == 0)
+        buffer[i++] = '0';
+ 
+    // If base is 10 and value is negative, the resulting string 
+    // is preceded with a minus sign (-)
+    // With any other base, value is always considered unsigned
+    if (value < 0 && base == 10)
+        buffer[i++] = '-';
+ 
+    buffer[i] = '\0'; // null terminate string
+ 
+    // reverse the string and return it
+    return reverse(buffer, 0, i - 1);
+}
+
+void bstdump(struct node *input)
+{
+    if(input!=NULL) // checking if the root is not null
+    {
+        bstdump(input->left_child); // visiting left child
+        uint8_t data_array[BLE_NUS_MAX_DATA_LEN];
+        uint16_t index = 0;
+        uint32_t ret_val;
+        //data_array[0] = ':';
+        //data_array[1] = 'r';
+        char cmd[BLE_NUS_MAX_DATA_LEN];
+        char cmd2[BLE_NUS_MAX_DATA_LEN-2];
+        cmd[0] = ':';
+        cmd[1] = 'r';
+        //printf("itoa = %s\r\n",itoa(input->data,cmd2,10));
+        strcpy(&cmd[2],itoa(input->data,cmd2,10));
+        printf(" %s \r\n",cmd);
+        index = (uint16_t)strlen(cmd);
+        int i;
+        for(i = 0; i < index; i++){
+            data_array[i] = (uint8_t)cmd[i];
+        }
+        
+        ret_val = ble_nus_c_string_send(&m_ble_nus_c, data_array, index);
+                    if ( (ret_val != NRF_ERROR_INVALID_STATE) && (ret_val != NRF_ERROR_RESOURCES) )
+                    {
+                        APP_ERROR_CHECK(ret_val);
+                    }
+        
+        bstdump(input->right_child);// visiting right child
+    }
+}
+
 
 /**@brief Function for handling characters received by the Nordic UART Service (NUS).
  *
@@ -294,6 +390,11 @@ static void ble_nus_chars_received_uart_print(uint8_t * p_data, uint16_t data_le
             }
             root = NULL;
             break;
+        case 'r':
+            printf("dumping bst\r\n");
+            if(!primary){
+                bstdump(root);
+            }
         default:
             break;
         }
@@ -313,6 +414,8 @@ static void ble_nus_chars_received_uart_print(uint8_t * p_data, uint16_t data_le
         } while (ret_val == NRF_ERROR_BUSY);
     }
 }
+
+
 
 
 /**@brief   Function for handling app_uart events.
@@ -466,7 +569,13 @@ static void ble_nus_c_evt_handler(ble_nus_c_t * p_ble_nus_c, ble_nus_c_evt_t con
             printf("Connected to device with Nordic UART Service.\r\n");
             static uint8_t data_array[BLE_NUS_MAX_DATA_LEN];
             data_array[0] = ':';
-            data_array[1] = 'l';
+            if(startup == 0){
+                data_array[1] = 'n';
+                startup = 1;
+            } else {
+                data_array[1] = 'l';
+            }
+            
             data_array[2] = '\0';
             static uint16_t index = 3;
             uint32_t ret_val;
@@ -484,7 +593,7 @@ static void ble_nus_c_evt_handler(ble_nus_c_t * p_ble_nus_c, ble_nus_c_evt_t con
         case BLE_NUS_C_EVT_DISCONNECTED:
             //NRF_LOG_INFO("Disconnected.");
             printf("Disconnected hehe\r\n");
-            nrf_delay_ms(5000);
+            nrf_delay_ms(1000);
             scan_start();
             break;
     }

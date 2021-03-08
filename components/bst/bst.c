@@ -44,6 +44,7 @@ struct node* new_node(int x)
 struct node* insert(struct node *root, int x)
 {
     //searching for the place to insert
+    //printf("inserting %d \r\n",x);
     if(root==NULL)
         return new_node(x);
     else if(x>root->data) // x is greater. Should be inserted to right
