@@ -130,9 +130,12 @@ struct node
 struct node *root;
 
 int primary = 1;
+int startup = 1;
 
 uint8_t lastcommand[25];
 uint8_t cmdlen = 0;
+
+int message_num = 0;
 
 
 /**@brief Function for assert macro callback.
@@ -307,6 +310,8 @@ static void nus_data_handler(ble_nus_evt_t * p_evt)
         //NRF_LOG_DEBUG("Received data from BLE NUS. Writing data on UART.");
         printf("Received data from BLE NUS. Writing data on UART.\r\n");
         NRF_LOG_HEXDUMP_DEBUG(p_evt->params.rx_data.p_data, p_evt->params.rx_data.length);
+        message_num++;
+        printf("message num: %d\r\n",message_num);
 
         for (uint32_t i = 0; i < p_evt->params.rx_data.length; i++)
         {
@@ -317,7 +322,7 @@ static void nus_data_handler(ble_nus_evt_t * p_evt)
                 {
                     //NRF_LOG_ERROR("Failed receiving NUS message. Error 0x%x. ", err_code);
                     printf("Failed receiving NUS message. Error 0x%08lx. \r\n", err_code);
-                    APP_ERROR_CHECK(err_code);
+                    //APP_ERROR_CHECK(err_code);
                 }
             } while (err_code == NRF_ERROR_BUSY);
         }
@@ -657,6 +662,24 @@ void gatt_evt_handler(nrf_ble_gatt_t * p_gatt, nrf_ble_gatt_evt_t const * p_evt)
     printf("ATT MTU exchange completed. central 0x%x peripheral 0x%x\r\n",
                   p_gatt->att_mtu_desired_central,
                   p_gatt->att_mtu_desired_periph);
+
+    if(startup){
+        ret_code_t err_code;
+        uint8_t loadcmd[3];
+        loadcmd[0] = ':';
+        loadcmd[1] = 'r';
+        loadcmd[2] = '\0';
+        uint16_t length = (uint16_t)3;
+        printf("Loading from backup\r\n");
+        err_code = ble_nus_data_send(&m_nus, loadcmd, &length, m_conn_handle);
+                if ((err_code != NRF_ERROR_INVALID_STATE) &&
+                    (err_code != NRF_ERROR_RESOURCES) &&
+                    (err_code != NRF_ERROR_NOT_FOUND))
+                {
+                    //APP_ERROR_CHECK(err_code);
+                }
+        startup = 0;
+    }
 
     
 }
