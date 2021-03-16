@@ -330,6 +330,24 @@ static void nus_data_handler(ble_nus_evt_t * p_evt)
         {
             while (app_uart_put('\n') == NRF_ERROR_BUSY);
         }
+        if(startup){
+            ret_code_t err_code;
+            uint8_t loadcmd[BLE_NUS_MAX_DATA_LEN];
+            loadcmd[0] = ':';
+            loadcmd[1] = 'r';
+            loadcmd[2] = '\0';
+            uint16_t length = (uint16_t)3;
+            printf("Loading from backup %s, length %d\r\n",loadcmd, length);
+            err_code = ble_nus_data_send(&m_nus, loadcmd, &length, m_conn_handle);
+                    if ((err_code != NRF_ERROR_INVALID_STATE) &&
+                        (err_code != NRF_ERROR_RESOURCES) &&
+                        (err_code != NRF_ERROR_NOT_FOUND))
+                    {
+                        APP_ERROR_CHECK(err_code);
+                    }
+            printf("Err: %08lx\r\n",err_code);
+            startup = 0;
+        }
         int j;
         char command;
         char number[25];
@@ -653,6 +671,8 @@ void gatt_evt_handler(nrf_ble_gatt_t * p_gatt, nrf_ble_gatt_evt_t const * p_evt)
         m_ble_nus_max_data_len = p_evt->params.att_mtu_effective - OPCODE_LENGTH - HANDLE_LENGTH;
         //NRF_LOG_INFO("Data len is set to 0x%X(%d)", m_ble_nus_max_data_len, m_ble_nus_max_data_len);
         printf("Data len is set to 0x%X(%d)\r\n", m_ble_nus_max_data_len, m_ble_nus_max_data_len);
+
+        
     }
     /*
     NRF_LOG_DEBUG("ATT MTU exchange completed. central 0x%x peripheral 0x%x",
@@ -663,23 +683,7 @@ void gatt_evt_handler(nrf_ble_gatt_t * p_gatt, nrf_ble_gatt_evt_t const * p_evt)
                   p_gatt->att_mtu_desired_central,
                   p_gatt->att_mtu_desired_periph);
 
-    if(startup){
-        ret_code_t err_code;
-        uint8_t loadcmd[3];
-        loadcmd[0] = ':';
-        loadcmd[1] = 'r';
-        loadcmd[2] = '\0';
-        uint16_t length = (uint16_t)3;
-        printf("Loading from backup\r\n");
-        err_code = ble_nus_data_send(&m_nus, loadcmd, &length, m_conn_handle);
-                if ((err_code != NRF_ERROR_INVALID_STATE) &&
-                    (err_code != NRF_ERROR_RESOURCES) &&
-                    (err_code != NRF_ERROR_NOT_FOUND))
-                {
-                    //APP_ERROR_CHECK(err_code);
-                }
-        startup = 0;
-    }
+    
 
     
 }
