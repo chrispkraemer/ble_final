@@ -315,6 +315,32 @@ void bstdump(struct node *input)
     }
 }
 
+void ack(){
+    uint8_t data_array[BLE_NUS_MAX_DATA_LEN];
+    uint16_t index = 0;
+    uint32_t ret_val;
+    //data_array[0] = ':';
+    //data_array[1] = 'r';
+    char cmd[BLE_NUS_MAX_DATA_LEN];
+    cmd[0] = ':';
+    cmd[1] = 'a';
+    cmd[2] = '\0';
+    //printf("itoa = %s\r\n",itoa(input->data,cmd2,10));
+    printf(" %s \r\n",cmd);
+    index = (uint16_t)strlen(cmd);
+    int i;
+    for(i = 0; i < index; i++){
+        data_array[i] = (uint8_t)cmd[i];
+    }
+    
+    ret_val = ble_nus_c_string_send(&m_ble_nus_c, data_array, index);
+                if ( (ret_val != NRF_ERROR_INVALID_STATE) && (ret_val != NRF_ERROR_RESOURCES) )
+                {
+                    APP_ERROR_CHECK(ret_val);
+                }
+    
+}
+
 
 /**@brief Function for handling characters received by the Nordic UART Service (NUS).
  *
@@ -366,6 +392,7 @@ static void ble_nus_chars_received_uart_print(uint8_t * p_data, uint16_t data_le
                 conv_number = atoi(number);
                 //printf("this is the number %d\r\n",conv_number);
                 root = insert(root, conv_number);
+                ack();
             }
             break;
         case 'd':
@@ -377,6 +404,7 @@ static void ble_nus_chars_received_uart_print(uint8_t * p_data, uint16_t data_le
                 conv_number = atoi(number);
                 //printf("this is the number %d\r\n",conv_number);
                 root = delete(root, conv_number);
+                ack();
             }
             break;
         case 'p':

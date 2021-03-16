@@ -136,6 +136,7 @@ uint8_t lastcommand[25];
 uint8_t cmdlen = 0;
 
 int message_num = 0;
+int ack = 0;
 
 
 /**@brief Function for assert macro callback.
@@ -421,6 +422,9 @@ static void nus_data_handler(ble_nus_evt_t * p_evt)
                 if(primary){
                     bstdump(root);
                 }
+            case 'a':
+                ack = 1;
+                break;
             default:
                 break;
             }
@@ -741,6 +745,26 @@ void bsp_event_handler(bsp_event_t event)
     }
 }
 
+void waitForAck(){
+    int count = 0;
+    uint32_t       err_code;
+    while(!ack){
+        printf("waiting for ack\r\n");
+        if(count > 1000){
+            uint16_t length = (uint16_t)cmdlen;
+            printf("ACK timeout, lastcommand: %s, cmdlen: %d\r\n", lastcommand,cmdlen);
+            err_code = ble_nus_data_send(&m_nus, lastcommand, &length, m_conn_handle);
+                    if ((err_code != NRF_ERROR_INVALID_STATE) &&
+                        (err_code != NRF_ERROR_RESOURCES) &&
+                        (err_code != NRF_ERROR_NOT_FOUND))
+                    {
+                        //APP_ERROR_CHECK(err_code);
+                    }
+        }
+        count++;
+    }
+}
+
 
 /**@brief   Function for handling app_uart events.
  *
@@ -813,6 +837,7 @@ void uart_event_handle(app_uart_evt_t * p_event)
                                     //printf("this is the number %d\r\n",conv_number);
                                     printf("i primary insert %d\r\n",conv_number);
                                     root = insert(root, conv_number);
+                                    waitForAck();
                                     sd_ble_gap_disconnect(m_conn_handle,
                                              BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
                                     //m_conn_handle = BLE_CONN_HANDLE_INVALID;
@@ -830,6 +855,7 @@ void uart_event_handle(app_uart_evt_t * p_event)
                                     conv_number = atoi(number);
                                     printf("this is the number to delete %d\r\n",conv_number);
                                     root = delete(root, conv_number);
+                                    waitForAck();
                                     sd_ble_gap_disconnect(m_conn_handle,
                                              BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
                                 }
