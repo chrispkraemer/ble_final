@@ -70,6 +70,8 @@
 #include "nrf_pwr_mgmt.h"
 #include "bst.h"
 #include "nrf_delay.h"
+#include "nrf_ble_scan.h"
+#include "ble_db_discovery.h"
 
 #if defined (UART_PRESENT)
 #include "nrf_uart.h"
@@ -110,7 +112,9 @@
 BLE_NUS_DEF(m_nus, NRF_SDH_BLE_TOTAL_LINK_COUNT);                                   /**< BLE NUS service instance. */
 NRF_BLE_GATT_DEF(m_gatt);                                                           /**< GATT module instance. */
 NRF_BLE_QWR_DEF(m_qwr);                                                             /**< Context for the Queued Write module.*/
-BLE_ADVERTISING_DEF(m_advertising);                                                 /**< Advertising module instance. */
+BLE_ADVERTISING_DEF(m_advertising);   
+//BLE_DB_DISCOVERY_DEF(m_db_disc);                                        /**< Database discovery module instance. */
+NRF_BLE_SCAN_DEF(m_scan);                                                /**< Advertising module instance. */
 
 static uint16_t   m_conn_handle          = BLE_CONN_HANDLE_INVALID;                 /**< Handle of the current connection. */
 static uint16_t   m_ble_nus_max_data_len = BLE_GATT_ATT_MTU_DEFAULT - 3;            /**< Maximum length of data (in bytes) that can be transmitted to the peer by the Nordic UART service module. */
@@ -118,6 +122,9 @@ static ble_uuid_t m_adv_uuids[]          =                                      
 {
     {BLE_UUID_NUS_SERVICE, NUS_SERVICE_UUID_TYPE}
 };
+
+/**@brief NUS UUID. */
+
 
 
 struct node
@@ -999,6 +1006,104 @@ static void advertising_start(void)
     APP_ERROR_CHECK(err_code);
 }
 
+/**@brief Function for starting scanning. */
+static void scan_start(void)
+{
+    ret_code_t ret;
+
+    printf("starting scan\r\n");
+
+    ret = nrf_ble_scan_start(&m_scan);
+    APP_ERROR_CHECK(ret);
+
+    printf("bsp indication\r\n");
+
+    ret = bsp_indication_set(BSP_INDICATE_SCANNING);
+    APP_ERROR_CHECK(ret);
+
+    printf("leaving start scan\r\n");
+}
+
+/**@brief Function for handling Scanning Module events.
+ */
+static void scan_evt_handler(scan_evt_t const * p_scan_evt)
+{
+    ret_code_t err_code;
+
+    //printf("entered scan evt handler\r\n");
+
+    switch(p_scan_evt->scan_evt_id)
+    {
+         case NRF_BLE_SCAN_EVT_CONNECTING_ERROR:
+         {
+              
+              err_code = p_scan_evt->params.connecting_err.err_code;
+              printf("scan error %ld\r\n",err_code);
+              APP_ERROR_CHECK(err_code);
+         } break;
+
+         case NRF_BLE_SCAN_EVT_CONNECTED:
+         {
+              ble_gap_evt_connected_t const * p_connected =
+                               p_scan_evt->params.connected.p_connected;
+             // Scan is automatically stopped by the connection.
+             /*
+             NRF_LOG_INFO("Connecting to target %02x%02x%02x%02x%02x%02x",
+                      p_connected->peer_addr.addr[0],
+                      p_connected->peer_addr.addr[1],
+                      p_connected->peer_addr.addr[2],
+                      p_connected->peer_addr.addr[3],
+                      p_connected->peer_addr.addr[4],
+                      p_connected->peer_addr.addr[5]
+                      );
+            */
+            printf("Connecting to target %02x%02x%02x%02x%02x%02x\r\n",
+                      p_connected->peer_addr.addr[0],
+                      p_connected->peer_addr.addr[1],
+                      p_connected->peer_addr.addr[2],
+                      p_connected->peer_addr.addr[3],
+                      p_connected->peer_addr.addr[4],
+                      p_connected->peer_addr.addr[5]
+                      );
+         } break;
+
+         case NRF_BLE_SCAN_EVT_SCAN_TIMEOUT:
+         {
+             //NRF_LOG_INFO("Scan timed out.");
+             printf("Scan timed out\r\n");
+             scan_start();
+         } break;
+         case NRF_BLE_SCAN_EVT_FILTER_MATCH:
+            printf("scan match\r\n");
+            break;
+
+         default:
+                printf("scan default, evt id = %d\r\n",p_scan_evt->scan_evt_id);
+             break;
+    }
+}
+
+static void scan_init(void)
+{
+    ret_code_t          err_code;
+    nrf_ble_scan_init_t init_scan;
+
+    memset(&init_scan, 0, sizeof(init_scan));
+
+    init_scan.connect_if_match = true;
+    init_scan.conn_cfg_tag     = APP_BLE_CONN_CFG_TAG;
+
+    err_code = nrf_ble_scan_init(&m_scan, &init_scan, scan_evt_handler);
+    APP_ERROR_CHECK(err_code);
+
+    
+    err_code = nrf_ble_scan_filter_set(&m_scan, SCAN_NAME_FILTER, DEVICE_NAME);
+    APP_ERROR_CHECK(err_code);
+
+    err_code = nrf_ble_scan_filters_enable(&m_scan, NRF_BLE_SCAN_NAME_FILTER, false);
+    APP_ERROR_CHECK(err_code);
+}
+
 
 /**@brief Application main function.
  */
@@ -1007,9 +1112,9 @@ int main(void)
     bool erase_bonds;
 
     // Initialize.
-    uart_init();
     log_init();
     timers_init();
+    uart_init();
     buttons_leds_init(&erase_bonds);
     power_management_init();
     ble_stack_init();
@@ -1019,11 +1124,19 @@ int main(void)
     advertising_init();
     conn_params_init();
 
+    scan_init();
+
     // Start execution.
     printf("\r\nUART started.\r\n");
     //NRF_LOG_INFO("Debug logging for UART over RTT started.");
     printf("Debug logging for UART over RTT started.\r\n");
-    advertising_start();
+    if(1){
+        advertising_start();
+    } else {
+        scan_start();
+    }
+    
+    
 
     //root = insert(root,3);
     //root = del(root,3);

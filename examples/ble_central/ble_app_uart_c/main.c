@@ -147,6 +147,8 @@ static void scan_evt_handler(scan_evt_t const * p_scan_evt)
 {
     ret_code_t err_code;
 
+    printf("scan default, evt id = %d\r\n",p_scan_evt->scan_evt_id);
+
     switch(p_scan_evt->scan_evt_id)
     {
          case NRF_BLE_SCAN_EVT_CONNECTING_ERROR:
@@ -922,8 +924,10 @@ int main(void)
     timer_init();
     uart_init();
     buttons_leds_init();
-    db_discovery_init();
     power_management_init();
+    
+    db_discovery_init();
+    
     ble_stack_init();
     gatt_init();
     nus_c_init();
